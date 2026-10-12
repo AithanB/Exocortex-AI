@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLanguage } from '../lib/language';
 import { formatDueLabel, formatDuration, formatTimeValue, toIsoDate } from '../lib/calendar';
-import type { NewTaskInput, TaskStatus } from '../types';
+import type { NewTaskInput, Task, TaskStatus } from '../types';
 import { WheelPicker } from './WheelPicker';
 import { MiniCalendar } from './MiniCalendar';
 import { ToggleSwitch } from './ToggleSwitch';
@@ -25,9 +25,20 @@ interface AddTaskSheetProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (task: NewTaskInput) => void;
+  initialTask: Task | null;
 }
 
-export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
+function timePickerValue(task: Task): string {
+  const time = task.dueTime || task.dueDate?.match(/T(\d{2}):(\d{2})/)?.slice(1).join(':') || '';
+  const twelveHour = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(time);
+  if (twelveHour) return `${Number(twelveHour[1])}:${twelveHour[2]} ${twelveHour[3].toUpperCase()}`;
+  const twentyFourHour = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!twentyFourHour) return '9:00 AM';
+  const hour = Number(twentyFourHour[1]);
+  return `${hour % 12 || 12}:${twentyFourHour[2]} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+export function AddTaskSheet({ open, onClose, onSubmit, initialTask }: AddTaskSheetProps) {
   const now = new Date();
   const { language, t } = useLanguage();
   const [categories, setCategories] = useState<string[]>([]);
@@ -40,6 +51,7 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [calDay, setCalDay] = useState<number | null>(null);
   const [dueTime, setDueTime] = useState('9:00 AM');
+  const [hasTime, setHasTime] = useState(true);
   const [error, setError] = useState('');
 
   const timeOptions = useMemo(() => Array.from({ length: 96 }, (_, index) => {
@@ -57,6 +69,41 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
   }), [language]);
   const selectedTimeLabel = timeOptions.find((option) => option.value === dueTime)?.label ?? dueTime;
   function addCategory(){const v=categoryInput.trim().replace(/,$/,'');if(v&&!categories.some(x=>x.toLowerCase()===v.toLowerCase()))setCategories(xs=>[...xs,v]);setCategoryInput('')}
+
+  function populate(task: Task | null): void {
+    setError('');
+    if (!task) {
+      setCategories([]);
+      setCategoryInput('');
+      setTitle('');
+      setStatus('Todo');
+      setUrgent(false);
+      setTimeEst('1h 00m');
+      setCalYear(now.getFullYear());
+      setCalMonth(now.getMonth());
+      setCalDay(null);
+      setDueTime('9:00 AM');
+      setHasTime(true);
+      return;
+    }
+
+    const date = /^(\d{4})-(\d{2})-(\d{2})/.exec(task.dueDate ?? '');
+    setCategories(task.subject.split(',').map((category) => category.trim()).filter(Boolean));
+    setCategoryInput('');
+    setTitle(task.title);
+    setStatus(task.status);
+    setUrgent(task.urgent);
+    setTimeEst(task.timeEst);
+    setCalYear(date ? Number(date[1]) : now.getFullYear());
+    setCalMonth(date ? Number(date[2]) - 1 : now.getMonth());
+    setCalDay(date ? Number(date[3]) : null);
+    setDueTime(timePickerValue(task));
+    setHasTime(task.hasTime);
+  }
+
+  useEffect(() => {
+    if (open) populate(initialTask);
+  }, [open, initialTask]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -80,6 +127,7 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
     setTimeEst('1h 00m');
     setCalDay(null);
     setDueTime('9:00 AM');
+    setHasTime(true);
     setError('');
   }
 
@@ -93,25 +141,28 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
       setError(t('Task title is required.'));
       return;
     }
-    if (calDay === null) {
+    if (calDay === null && !initialTask) {
       setError(t('Due date is required.'));
       return;
     }
 
-    const dueDate = toIsoDate(calYear, calMonth, calDay);
+    const dueDate = calDay === null ? null : toIsoDate(calYear, calMonth, calDay);
+    const due = calDay === null
+      ? t('No due date')
+      : formatDueLabel(calYear, calMonth, calDay, hasTime ? selectedTimeLabel : '', language);
     onSubmit({
       subject: categories.map(x=>x.trim().toUpperCase()).join(', ') || 'GENERAL',
       title: title.trim(),
-      due: formatDueLabel(calYear, calMonth, calDay, selectedTimeLabel, language),
+      due,
       dueDate,
-      dueTime,
+      dueTime: hasTime ? dueTime : '',
       status,
       urgent,
       timeEst,
-      category: 'general',
-      hasTime: true,
+      category: initialTask?.category ?? 'general',
+      hasTime,
       isCompleted: status === 'Done',
-      createdAt: new Date().toISOString(),
+      createdAt: initialTask?.createdAt ?? new Date().toISOString(),
     });
     reset();
   }
@@ -152,10 +203,10 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
         <header className="flex items-center justify-between border-b border-row px-6 pb-3.5 pt-[18px]">
           <div>
             <p className="mb-[3px] font-display text-[9px] font-bold tracking-widest text-accent-red">
-              {t('NEW TASK')}
+              {t(initialTask ? 'EDIT TASK' : 'NEW TASK')}
             </p>
             <h2 id="add-task-title" className="font-display text-lg font-bold tracking-tighter text-charcoal">
-              {t('Add Task')}
+              {t(initialTask ? 'Edit Task' : 'Add Task')}
             </h2>
           </div>
           <button
@@ -170,7 +221,7 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
 
         <div className="flex flex-col gap-[18px] px-6 pb-8 pt-5">
           <FieldBlock label={t('CATEGORY')}>
-            <div className="mb-2 flex flex-wrap gap-1.5">{categories.map(category=><span key={category} className="inline-flex items-center gap-1 rounded-sm border border-charcoal bg-charcoal px-2.5 py-1.5 font-display text-[9px] font-semibold tracking-wide text-white">{category}<button type="button" aria-label={t('Remove category')+': '+category} onClick={()=>setCategories(xs=>xs.filter(x=>x!==category))} className="ml-0.5 flex h-4 w-4 items-center justify-center text-white/70 hover:text-white">×</button></span>)}</div>
+            <div className="mb-2 flex flex-wrap gap-1.5">{categories.map(category=><span key={category} className="inline-flex items-center gap-1 rounded-sm border border-primary bg-primary px-2.5 py-1.5 font-display text-[9px] font-semibold tracking-wide text-primary-contrast">{category}<button type="button" aria-label={t('Remove category')+': '+category} onClick={()=>setCategories(xs=>xs.filter(x=>x!==category))} className="ml-0.5 flex h-4 w-4 items-center justify-center opacity-70 hover:opacity-100">×</button></span>)}</div>
             <input type="text" value={categoryInput} onChange={e=>setCategoryInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();addCategory()}}} placeholder={t('Type a category and press Enter')} className="w-full rounded-sm border border-border bg-transparent px-3 py-2.5 font-body text-[13px] text-charcoal outline-none focus:border-charcoal"/>
           </FieldBlock>
 
@@ -204,7 +255,7 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
               onSelectDay={setCalDay}
             />
 
-            <div className="mt-3"><p className="mb-2 font-display text-[9px] font-semibold tracking-wider text-muted-2">{t('TIME')}</p><WheelPicker options={timeOptions} value={dueTime} onChange={setDueTime} label={t('TIME')} hint={t('Scroll to select time')}/></div>
+            <div className="mt-3"><p className="mb-2 font-display text-[9px] font-semibold tracking-wider text-muted-2">{t('TIME')}</p><WheelPicker options={timeOptions} value={dueTime} onChange={(value) => { setDueTime(value); setHasTime(true); }} label={t('TIME')} hint={t('Scroll to select time')}/></div>
           </FieldBlock>
 
           <FieldBlock label={t('STATUS')}>
@@ -215,9 +266,9 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
                 if (selected && item === 'Done') {
                   className = 'border border-muted-4 bg-surface-3 text-charcoal';
                 } else if (selected && item === 'In Progress') {
-                  className = 'border border-blue-ink bg-blue-ink text-white';
+                  className = 'border border-accent-red bg-accent-red text-white';
                 } else if (selected) {
-                  className = 'border border-charcoal bg-charcoal text-white';
+                  className = 'border border-primary bg-primary text-primary-contrast';
                 }
 
                 return (
@@ -245,7 +296,6 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
               checked={urgent}
               onChange={() => setUrgent((value) => !value)}
               label={t('URGENT')}
-              accent="red"
             />
           </div>
 
@@ -254,9 +304,9 @@ export function AddTaskSheet({ open, onClose, onSubmit }: AddTaskSheetProps) {
           <button
             type="button"
             onClick={handleSubmit}
-            className="mt-1 w-full rounded-sm bg-accent-red py-3.5 font-display text-[11px] font-bold tracking-wider text-white"
+            className="mt-1 w-full rounded-sm bg-primary py-3.5 font-display text-[11px] font-bold tracking-wider text-primary-contrast transition-opacity hover:opacity-90"
           >
-            {t('ADD TASK')}
+            {t(initialTask ? 'SAVE CHANGES' : 'ADD TASK')}
           </button>
         </div>
       </section>

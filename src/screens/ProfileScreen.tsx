@@ -5,7 +5,8 @@ import { KpiCard } from '../components/KpiCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { toIsoDate } from '../lib/calendar';
 import { useLanguage } from '../lib/language';
-import type { Course, Kpi, ProfileSection, SettingItem, Task } from '../types';
+import { useTheme } from '../lib/theme';
+import type { Course, Kpi, ProfileSection, Task } from '../types';
 
 // Статистика считается из задач ТЕКУЩЕГО пользователя, а не из демо-данных.
 function buildKpis(tasks: Task[], t: (value: string) => string): Kpi[] {
@@ -43,14 +44,13 @@ function buildCourses(tasks: Task[]): Course[] {
 
 interface ProfileScreenProps {
     tasks: Task[];
-    settings: SettingItem[];
-    onToggleSetting: (id: string) => void;
     session: any; // <-- Принимаем сессию от Supabase
 }
 
-export function ProfileScreen({ tasks, settings, onToggleSetting, session }: ProfileScreenProps) {
+export function ProfileScreen({ tasks, session }: ProfileScreenProps) {
     const [section, setSection] = useState<ProfileSection>('kpis');
     const { language, setLanguage, t } = useLanguage();
+    const { theme, toggleTheme } = useTheme();
     const kpis = useMemo(() => buildKpis(tasks, t), [tasks, t]);
     const courses = useMemo(() => buildCourses(tasks), [tasks]);
 
@@ -77,8 +77,8 @@ export function ProfileScreen({ tasks, settings, onToggleSetting, session }: Pro
                 title={username} // <-- Реальный юзернейм вместо фейкового имени
                 subtitle={email}    // <-- Реальный email вместо фейкового вуза
                 trailing={
-                    <div className="flex h-[52px] w-[52px] items-center justify-center rounded-sm border border-charcoal bg-charcoal">
-                        <span className="font-display text-lg font-extrabold text-white">{initials}</span>
+                    <div className="flex h-[52px] w-[52px] items-center justify-center rounded-sm border border-primary bg-primary">
+                        <span className="font-display text-lg font-extrabold text-primary-contrast">{initials}</span>
                     </div>
                 }
             />
@@ -146,30 +146,14 @@ export function ProfileScreen({ tasks, settings, onToggleSetting, session }: Pro
 
             <section className="shrink-0 px-6" aria-label={t('SETTINGS')}>
                 <p className="type-label pb-2 pt-4">{t('SETTINGS')}</p>
-                {settings.map((item) => (
-                    <div
-                        key={item.id}
-                        className="flex items-center justify-between py-3.5 border-b border-surface-3"
-                    >
-            <span
-                className={`font-body text-[13px] ${
-                    item.danger ? 'font-medium text-accent-red' : 'font-normal text-ink'
-                }`}
-            >
-              {t(item.label)}
-            </span>
-                        {item.toggle ? (
-                            <ToggleSwitch
-                                checked={Boolean(item.on)}
-                                onChange={() => onToggleSetting(item.id)}
-                                label={t(item.label)}
-                            />
-                        ) : (
-                            <span className="font-body text-xs text-muted-2">{item.value}</span>
-                        )}
-                    </div>
-                ))}
-
+                <div className="flex items-center justify-between border-b border-surface-3 py-3.5">
+                    <span className="font-body text-[13px] text-ink">{t('Dark theme')}</span>
+                    <ToggleSwitch
+                        checked={theme === 'dark'}
+                        onChange={toggleTheme}
+                        label={t('Dark theme')}
+                    />
+                </div>
                 {/* КНОПКА ВЫХОДА: стилизована под твою опасную (danger) кнопку в списке настроек */}
                 <div className="flex items-center justify-between border-b border-surface-3 py-3.5"><span className="font-body text-[13px] text-ink">{t('Language')}</span><select value={language} onChange={e=>setLanguage(e.target.value as 'en'|'ru')} aria-label={t('Language')} className="rounded-sm border border-ui bg-page px-2.5 py-2 font-body text-xs text-charcoal outline-none focus:border-charcoal"><option value="en">{t('English')}</option><option value="ru">{t('Russian')}</option></select></div>
                 <button

@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { Register } from './screens/Register';
 import { LanguageProvider, useLanguage } from './lib/language';
+import { ThemeProvider } from './lib/theme';
 import { Login } from './screens/Login';
 
 import { AppShell } from './components/AppShell';
@@ -12,12 +13,15 @@ import { askGemini } from './lib/gemini';
 import { localReply } from './lib/localReply';
 import {
   DEFAULT_PREFS,
+  deleteMessages,
   fetchMessages,
   fetchPrefs,
   fetchTasks,
+  deleteTask as deleteTaskFromDb,
   insertMessage,
   insertTask,
-  savePrefs,
+  insertTasks,
+  updateTask,
   updateTaskStatus,
   type UserPrefs,
 } from './lib/db';
@@ -25,13 +29,13 @@ import { CalendarScreen } from './screens/CalendarScreen';
 import { ChatScreen } from './screens/ChatScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
-import type { ChatMessage, NavTab, NewTaskInput, SettingItem, Task, TaskStatus } from './types';
+import type { ChatMessage, NavTab, NewTaskInput, Task, TaskStatus } from './types';
 
-function buildSettings(prefs: UserPrefs): SettingItem[] {
-  return [
-    { id: 'notifications', label: 'Notifications', toggle: true, on: prefs.notifications },
-    { id: 'ai-mode', label: 'AI Study Mode', toggle: true, on: prefs.aiMode },
-  ];
+interface PendingDelete {
+  task: Task;
+  index: number;
+  userId: string;
+  timer: number;
 }
 
 function welcomeMessage(name: string): ChatMessage {
@@ -44,7 +48,7 @@ function welcomeMessage(name: string): ChatMessage {
 }
 
 function AppContent() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [showLogin, setShowLogin] = useState<boolean>(false);
@@ -52,8 +56,11 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatCleared, setChatCleared] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [prefs, setPrefs] = useState<UserPrefs>(DEFAULT_PREFS);
+  const [deleteToastId, setDeleteToastId] = useState<string | null>(null);
+  const pendingDeletesRef = useRef(new Map<string, PendingDelete>());
 
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -74,6 +81,23 @@ function AppContent() {
   prefsRef.current = prefs;
   const chatBusyRef = useRef(false);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const messageWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  function latestPendingDeleteId(): string | null {
+    const pending = Array.from(pendingDeletesRef.current.values());
+    return pending[pending.length - 1]?.task.id ?? null;
+  }
+
+  function clearPendingDeletes(): void {
+    pendingDeletesRef.current.forEach(({ timer }) => window.clearTimeout(timer));
+    pendingDeletesRef.current.clear();
+    setDeleteToastId(null);
+  }
+
+  useEffect(() => () => {
+    pendingDeletesRef.current.forEach(({ timer }) => window.clearTimeout(timer));
+    pendingDeletesRef.current.clear();
+  }, []);
 
   // --- Сессия Supabase ---
   useEffect(() => {
@@ -95,8 +119,10 @@ function AppContent() {
   // --- Данные ТЕКУЩЕГО пользователя. Перезагружаются при смене userId (вход/выход/смена аккаунта). ---
   useEffect(() => {
     // Любой выход или смена аккаунта: сразу чистим всё, чтобы не мелькали чужие данные.
+    clearPendingDeletes();
     setTasks([]);
     setMessages([]);
+    setChatCleared(false);
     setPrefs(DEFAULT_PREFS);
     chatAbortRef.current?.abort(); // отменяем незавершённый запрос ИИ предыдущего пользователя
     chatBusyRef.current = false;
@@ -136,6 +162,20 @@ function AppContent() {
     setDataError(error instanceof Error ? error.message : String(error));
   }, []);
 
+  function enqueueMessageWrite(write: () => Promise<void>): void {
+    messageWriteQueueRef.current = messageWriteQueueRef.current.then(write).catch(reportError);
+  }
+
+  function handleClearChat(): void {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    chatBusyRef.current = false;
+    setChatLoading(false);
+    setMessages([]);
+    setChatCleared(true);
+    enqueueMessageWrite(deleteMessages);
+  }
+
   async function handleAddTask(input: NewTaskInput): Promise<void> {
     try {
       const created = await insertTask(input);
@@ -145,26 +185,99 @@ function AppContent() {
     }
   }
 
+  async function handleUpdateTask(id: string, input: NewTaskInput): Promise<void> {
+    const previous = tasksRef.current.find((task) => task.id === id);
+    if (!previous) return;
+    const updated: Task = {
+      ...previous,
+      subject: input.subject,
+      title: input.title,
+      due: input.due,
+      dueDate: input.dueDate,
+      dueTime: input.dueTime,
+      status: input.status,
+      urgent: input.urgent,
+      timeEst: input.timeEst,
+      category: input.category ?? previous.category,
+      hasTime: input.hasTime ?? Boolean(input.dueTime),
+      isCompleted: input.isCompleted ?? input.status === 'Done',
+      createdAt: input.createdAt ?? previous.createdAt,
+    };
+    setTasks((current) => current.map((task) => task.id === id ? updated : task));
+    try {
+      await updateTask(id, input);
+    } catch (error) {
+      setTasks((current) => current.map((task) => task.id === id ? previous : task));
+      reportError(error);
+    }
+  }
+
+  function handleDeleteTask(task: Task): void {
+    if (!userId || pendingDeletesRef.current.has(task.id)) return;
+    const index = tasksRef.current.findIndex((item) => item.id === task.id);
+    if (index < 0) return;
+
+    const pending: PendingDelete = {
+      task,
+      index,
+      userId,
+      timer: 0,
+    };
+    pending.timer = window.setTimeout(() => {
+      if (pendingDeletesRef.current.get(task.id) !== pending) return;
+      pendingDeletesRef.current.delete(task.id);
+      setDeleteToastId((current) => current === task.id ? latestPendingDeleteId() : current);
+      deleteTaskFromDb(task.id).catch((error) => {
+        if (userIdRef.current === pending.userId) {
+          setTasks((current) => {
+            if (current.some((item) => item.id === task.id)) return current;
+            const restored = [...current];
+            restored.splice(Math.min(pending.index, restored.length), 0, pending.task);
+            return restored;
+          });
+        }
+        reportError(error);
+      });
+    }, 5000);
+    pendingDeletesRef.current.set(task.id, pending);
+    setDeleteToastId(task.id);
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+  }
+
+  function handleUndoDelete(): void {
+    if (!deleteToastId) return;
+    const pending = pendingDeletesRef.current.get(deleteToastId);
+    if (!pending) {
+      setDeleteToastId(latestPendingDeleteId());
+      return;
+    }
+    window.clearTimeout(pending.timer);
+    pendingDeletesRef.current.delete(deleteToastId);
+    setTasks((current) => {
+      if (current.some((item) => item.id === pending.task.id)) return current;
+      const restored = [...current];
+      restored.splice(Math.min(pending.index, restored.length), 0, pending.task);
+      return restored;
+    });
+    setDeleteToastId(latestPendingDeleteId());
+  }
+
   async function handleBrainDump(parsedTasks: Task[]): Promise<void> {
     try {
-      const created = await Promise.all(
-        parsedTasks.map((task) =>
-          insertTask({
-            subject: task.subject,
-            title: task.title,
-            due: task.due,
-            dueDate: task.dueDate,
-            dueTime: task.dueTime,
-            status: task.status,
-            urgent: task.urgent,
-            timeEst: task.timeEst,
-            category: task.category,
-            hasTime: task.hasTime,
-            isCompleted: task.isCompleted,
-            createdAt: task.createdAt,
-          }),
-        ),
-      );
+      const created = await insertTasks(parsedTasks.map((task) => ({
+        subject: task.subject,
+        title: task.title,
+        due: task.due,
+        dueDate: task.dueDate,
+        dueTime: task.dueTime,
+        status: task.status,
+        urgent: task.urgent,
+        timeEst: task.timeEst,
+        category: task.category,
+        hasTime: task.hasTime,
+        isCompleted: task.isCompleted,
+        createdAt: task.createdAt,
+      })));
       setTasks((previous) => [...created, ...previous]);
     } catch (error) {
       reportError(error);
@@ -193,6 +306,7 @@ function AppContent() {
 
     const history = messagesRef.current; // сообщения ДО текущего вопроса
     const sendingUserId = userId;
+    setChatCleared(false);
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: 'user',
@@ -201,7 +315,7 @@ function AppContent() {
     };
     setMessages((prev) => [...prev, userMessage]);
     setChatLoading(true);
-    insertMessage('user', text).catch(reportError);
+    enqueueMessageWrite(() => insertMessage('user', text));
 
     const controller = new AbortController();
     chatAbortRef.current = controller;
@@ -244,24 +358,7 @@ function AppContent() {
       time: formatClock(new Date()),
     };
     setMessages((prev) => [...prev, aiMessage]);
-    insertMessage('ai', replyText).catch(reportError);
-  }
-
-  function handleToggleSetting(id: string): void {
-    if (!userId) return;
-    const next: UserPrefs =
-      id === 'notifications'
-        ? { ...prefs, notifications: !prefs.notifications }
-        : id === 'ai-mode'
-          ? { ...prefs, aiMode: !prefs.aiMode }
-          : prefs;
-    if (next === prefs) return;
-    const previous = prefs;
-    setPrefs(next);
-    savePrefs(userId, next).catch((error) => {
-      setPrefs(previous);
-      reportError(error);
-    });
+    enqueueMessageWrite(() => insertMessage('ai', replyText));
   }
 
   // --- Экран загрузки сессии ---
@@ -283,7 +380,7 @@ function AppContent() {
             <header className="flex shrink-0 items-center gap-3 border-b border-ui pb-5">
               <span className="h-2.5 w-2.5 bg-accent-red" aria-hidden="true" />
               <div>
-                <p className="font-display text-[10px] font-bold tracking-[0.16em] text-charcoal">EDU NAVIGATOR</p>
+                <p className="font-display text-[10px] font-bold tracking-[0.16em] text-charcoal">EXOCORTEX AI</p>
                 <p className="mt-0.5 font-body text-[10px] text-muted-2">AI STUDY PLANNER</p>
               </div>
             </header>
@@ -292,7 +389,7 @@ function AppContent() {
             </div>
             <footer className="shrink-0 border-t border-ui pt-5 text-center">
               <p className="font-body text-[12px] text-slate">
-                {showLogin ? 'New to Skillset?' : 'Already have an account?'}
+                {showLogin ? 'New to Exocortex AI?' : 'Already have an account?'}
               </p>
               <button type="button" onClick={() => setShowLogin(!showLogin)}
                 className="mt-2 bg-transparent font-display text-[10px] font-bold tracking-widest text-charcoal underline decoration-accent-red decoration-2 underline-offset-4 hover:text-accent-red">
@@ -314,7 +411,7 @@ function AppContent() {
     );
   }
 
-  const chatMessages = messages.length === 0 ? [welcomeMessage(username)] : messages;
+  const chatMessages = messages.length === 0 && !chatCleared ? [welcomeMessage(username)] : messages;
 
   return (
     <AppShell>
@@ -332,26 +429,50 @@ function AppContent() {
           <HomeScreen
             tasks={tasks}
             onAddTask={handleAddTask}
+            onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
             onBrainDump={handleBrainDump}
             onStatusChange={handleStatusChange}
           />
         ) : null}
         {activeTab === 'calendar' ? <CalendarScreen tasks={tasks} /> : null}
         {activeTab === 'chat' ? (
-          <ChatScreen messages={chatMessages} loading={chatLoading} onSend={handleSendMessage} />
+          <ChatScreen messages={chatMessages} loading={chatLoading} onSend={handleSendMessage} onClear={handleClearChat} />
         ) : null}
         {activeTab === 'profile' ? (
           <ProfileScreen
             tasks={tasks}
-            settings={buildSettings(prefs)}
-            onToggleSetting={handleToggleSetting}
             session={session}
           />
         ) : null}
       </div>
       <BottomNav activeTab={activeTab} onChange={setActiveTab} />
+      {deleteToastId ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute bottom-[68px] left-4 right-4 z-[80] flex items-center justify-between border border-primary bg-primary px-4 py-3 text-primary-contrast shadow-overlay"
+        >
+          <span className="font-body text-[12px]">{t('Task deleted')}</span>
+          <button
+            type="button"
+            onClick={handleUndoDelete}
+            className="font-display text-[10px] font-bold tracking-wider text-primary-contrast underline decoration-accent-red decoration-2 underline-offset-4"
+          >
+            {t('Undo')}
+          </button>
+        </div>
+      ) : null}
     </AppShell>
   );
 }
 
-export default function App() { return <LanguageProvider><AppContent /></LanguageProvider>; }
+export default function App() {
+  return (
+    <LanguageProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </LanguageProvider>
+  );
+}

@@ -38,7 +38,7 @@ export function Login() {
                         className="mt-2 w-full rounded-sm border border-ui bg-page px-3 py-3 font-body text-[13px] text-ink outline-none transition-colors placeholder:text-muted-3 focus:border-charcoal" />
                 </div>
                 <button type="submit" disabled={loading}
-                    className="mt-1 w-full rounded-sm bg-charcoal px-4 py-3 font-display text-[10px] font-bold tracking-widest text-page transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50">
+                    className="mt-1 w-full rounded-sm bg-primary px-4 py-3 font-display text-[10px] font-bold tracking-widest text-primary-contrast transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50">
                     {loading ? t('SIGNING IN…') : t('SIGN IN')}
                 </button>
             </form>

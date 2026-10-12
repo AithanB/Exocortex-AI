@@ -2,12 +2,9 @@ interface ToggleSwitchProps {
   checked: boolean;
   onChange: () => void;
   label: string;
-  accent?: 'red' | 'ink';
 }
 
-export function ToggleSwitch({ checked, onChange, label, accent = 'ink' }: ToggleSwitchProps) {
-  const onColor = accent === 'red' ? 'bg-accent-red' : 'bg-blue-ink';
-
+export function ToggleSwitch({ checked, onChange, label }: ToggleSwitchProps) {
   return (
     <button
       type="button"
@@ -16,7 +13,7 @@ export function ToggleSwitch({ checked, onChange, label, accent = 'ink' }: Toggl
       aria-label={label}
       onClick={onChange}
       className={`relative h-6 w-[42px] rounded-sm transition-colors duration-fast ${
-        checked ? onColor : 'bg-border-ui'
+        checked ? 'bg-accent-red' : 'bg-border-ui'
       }`}
     >
       <span

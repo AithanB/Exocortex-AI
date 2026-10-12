@@ -76,6 +76,47 @@ export async function insertTask(input: NewTaskInput): Promise<Task> {
   return rowToTask(data as TaskRow);
 }
 
+export async function insertTasks(inputs: NewTaskInput[]): Promise<Task[]> {
+  if (inputs.length === 0) return [];
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert(inputs.map((input) => ({
+      subject: input.subject,
+      title: input.title,
+      due: input.due,
+      due_date: input.dueDate,
+      due_time: input.dueTime,
+      status: input.status,
+      urgent: input.urgent,
+      time_est: input.timeEst,
+    })))
+    .select('id, subject, title, due, due_date, due_time, status, urgent, time_est');
+  if (error) throw error;
+  return (data as TaskRow[]).map(rowToTask);
+}
+
+export async function updateTask(id: string, input: NewTaskInput): Promise<void> {
+  const { error } = await supabase
+    .from('tasks')
+    .update({
+      subject: input.subject,
+      title: input.title,
+      due: input.due,
+      due_date: input.dueDate,
+      due_time: input.dueTime,
+      status: input.status,
+      urgent: input.urgent,
+      time_est: input.timeEst,
+    })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function updateTaskStatus(id: string, status: TaskStatus): Promise<void> {
   const { error } = await supabase
     .from('tasks')
@@ -110,6 +151,11 @@ export async function fetchMessages(): Promise<ChatMessage[]> {
 
 export async function insertMessage(role: ChatRole, text: string): Promise<void> {
   const { error } = await supabase.from('chat_messages').insert({ role, text });
+  if (error) throw error;
+}
+
+export async function deleteMessages(): Promise<void> {
+  const { error } = await supabase.from('chat_messages').delete().not('id', 'is', null);
   if (error) throw error;
 }
 

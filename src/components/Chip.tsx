@@ -8,8 +8,8 @@ interface ChipProps {
 export function Chip({ label, selected, onClick, variant = 'neutral' }: ChipProps) {
   const selectedClass =
     variant === 'ink'
-      ? 'border-blue-ink bg-blue-ink text-white'
-      : 'border-charcoal bg-charcoal text-white';
+      ? 'border-primary bg-primary text-primary-contrast'
+      : 'border-primary bg-primary text-primary-contrast';
 
   const idleClass =
     variant === 'accent'

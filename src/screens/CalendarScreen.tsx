@@ -120,7 +120,7 @@ export function CalendarScreen({ tasks }: CalendarScreenProps) {
                       onClick={() => setSelectedDay(day === selectedDay ? null : day)}
                       className={`relative flex h-[30px] w-[30px] items-center justify-center rounded-sm font-display text-[13px] ${
                         isSelected
-                          ? 'bg-charcoal font-bold text-white'
+                          ? 'bg-primary font-bold text-primary-contrast'
                           : isToday
                             ? 'border border-accent-red bg-surface-2 font-bold text-accent-red'
                             : weekend

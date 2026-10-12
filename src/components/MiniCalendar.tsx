@@ -73,7 +73,7 @@ export function MiniCalendar({
                   onClick={() => onSelectDay(day)}
                   className={`flex h-6 w-6 items-center justify-center rounded-sm font-display text-[11px] ${
                     selected
-                      ? 'bg-charcoal font-bold text-white'
+                      ? 'bg-primary font-bold text-primary-contrast'
                       : weekend
                         ? 'font-normal text-muted-4'
                         : 'font-normal text-ink'

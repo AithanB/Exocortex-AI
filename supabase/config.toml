@@ -1,0 +1,5 @@
+[functions.parse-brain-dump]
+verify_jwt = false
+
+[functions.study-ai]
+verify_jwt = false

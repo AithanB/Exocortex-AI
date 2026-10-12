@@ -15,8 +15,8 @@ interface MessageBubbleProps {
 
 function AIAvatar() {
   return (
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-charcoal bg-charcoal">
-      <span className="font-display text-[10px] font-extrabold tracking-[0.02em] text-white">AI</span>
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-primary bg-primary">
+      <span className="font-display text-[10px] font-extrabold tracking-[0.02em] text-primary-contrast">AI</span>
     </div>
   );
 }
@@ -36,18 +36,8 @@ function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       ) : null}
 
-      <div
-        className={`max-w-[82%] rounded-sm px-3.5 py-3 ${
-          isAI
-            ? 'border-hairline border-border bg-page'
-            : 'border-hairline border-blue-ink bg-blue-ink'
-        }`}
-      >
-        <p
-          className={`m-0 whitespace-pre-line font-body text-[13px] leading-[1.65] ${
-            isAI ? 'text-ink' : 'text-white'
-          }`}
-        >
+      <div className="max-w-[82%] rounded-sm border border-border bg-page px-3.5 py-3 text-charcoal">
+        <p className="m-0 whitespace-pre-line font-body text-[13px] leading-[1.65]">
           {message.text}
         </p>
       </div>
@@ -60,10 +50,12 @@ function MessageBubble({ message }: MessageBubbleProps) {
 export function AIChatBox({ messages, onSend, loading }: AIChatBoxProps) {
   const { t } = useLanguage();
   const [input, setInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
 
   function submit(text: string): void {
@@ -74,27 +66,32 @@ export function AIChatBox({ messages, onSend, loading }: AIChatBoxProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <section className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-6 py-5" aria-live="polite">
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
+      <section
+        ref={messagesContainerRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5"
+        aria-live="polite"
+      >
+        <div className="flex min-h-full flex-col gap-3.5">
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
+          ))}
 
-        {loading ? (
-          <div className="flex items-start gap-2.5">
-            <AIAvatar />
-            <div className="flex items-center gap-1 rounded-sm border-hairline border-border px-3.5 py-3">
-              {[0, 1, 2].map((index) => (
-                <span
-                  key={index}
-                  className="h-[5px] w-[5px] rounded-pill bg-muted-4 animate-chat-pulse"
-                  style={{ animationDelay: `${index * 0.2}s` }}
-                />
-              ))}
-              <span className="sr-only">{t('Assistant is typing')}</span>
+          {loading ? (
+            <div className="flex items-start gap-2.5">
+              <AIAvatar />
+              <div className="flex items-center gap-1 rounded-sm border-hairline border-border px-3.5 py-3">
+                {[0, 1, 2].map((index) => (
+                  <span
+                    key={index}
+                    className="h-[5px] w-[5px] rounded-pill bg-muted-4 animate-chat-pulse"
+                    style={{ animationDelay: `${index * 0.2}s` }}
+                  />
+                ))}
+                <span className="sr-only">{t('Assistant is typing')}</span>
+              </div>
             </div>
-          </div>
-        ) : null}
-        <div ref={bottomRef} />
+          ) : null}
+        </div>
       </section>
 
       <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-row px-6 pb-2 pt-3">
@@ -138,7 +135,7 @@ export function AIChatBox({ messages, onSend, loading }: AIChatBoxProps) {
         </div>
         <button
           type="submit"
-          className="shrink-0 rounded-sm bg-blue-ink px-[18px] py-2.5 font-display text-[11px] font-bold tracking-wide text-white"
+          className="shrink-0 rounded-sm bg-primary px-[18px] py-2.5 font-display text-[11px] font-bold tracking-wide text-primary-contrast hover:opacity-90"
         >
           {t('SEND')}
         </button>

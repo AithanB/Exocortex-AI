@@ -15,6 +15,8 @@ export default {
       colors: {
         canvas: 'var(--color-canvas)',
         page: 'var(--color-page)',
+        primary: 'var(--color-primary)',
+        'primary-contrast': 'var(--color-primary-contrast)',
         charcoal: 'var(--color-charcoal)',
         slate: 'var(--color-slate)',
         muted: {
