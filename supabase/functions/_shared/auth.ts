@@ -1,3 +1,9 @@
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':

@@ -1,3 +1,10 @@
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
+// @ts-ignore - resolved by the Supabase Deno runtime at execution time
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { corsHeaders, requireAuthenticatedUser } from '../_shared/auth.ts';
 
@@ -114,7 +121,7 @@ async function callModel(
   }
 }
 
-serve(async (request) => {
+serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (request.method !== 'POST') return responseError('Method not allowed', 405);
   const authError = await requireAuthenticatedUser(request);

@@ -135,7 +135,7 @@ function extractDate(text: string, now: Date): { date: Date | null; remaining: s
     return { date, remaining: remaining.replace(relative[0], ' ') };
   }
 
-  const weekday = /\b(next\s+)?(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat)\b|(?:в|к|до)?\s*(воскресенье|воскресенья|воскресенью|понедельник|понедельника|понедельнику|вторник|вторника|вторнику|среда|среды|среду|среде|четверг|четверга|четвергу|пятница|пятницу|пятницы|пятнице|суббота|субботу|субботы|субботе)\b/i.exec(remaining);
+  const weekday = /(?<![\p{L}\p{N}])(?:(next)\s+)?(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat)(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])(?:(?:в|к|до)\s*)?(воскресенье|воскресенья|воскресенью|понедельник|понедельника|понедельнику|вторник|вторника|вторнику|среда|среды|среду|среде|четверг|четверга|четвергу|пятница|пятницу|пятницы|пятнице|суббота|субботу|субботы|субботе)(?![\p{L}\p{N}])/iu.exec(remaining);
   if (weekday) {
     const dayName = (weekday[2] || weekday[3]).toLowerCase();
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
