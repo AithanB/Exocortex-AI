@@ -26,7 +26,7 @@ function statusBadgeClass(status: TaskStatus): string {
 }
 
 function statusDotClass(status: TaskStatus): string {
-  if (status === 'In Progress') return 'bg-progress';
+  if (status === 'In Progress') return 'bg-surface';
   if (status === 'Done') return 'bg-muted-3';
   return 'bg-charcoal';
 }

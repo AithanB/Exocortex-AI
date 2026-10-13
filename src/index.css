@@ -466,7 +466,7 @@
 .brain-dump-gradient-content {
   position: relative;
   z-index: 1;
-  padding: 12px;
+  padding: 18px;
 }
 
 @keyframes brain-dump-gradient-rotate {
